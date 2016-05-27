@@ -12,7 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class Main {
-	private static final String CP_COMMAND = "cp -R %s %s";
+	private static final String CP_COMMAND = "cp -r %s %s";
 	private static final String COMPARE_PNGS_COMMAND = "compare_pngs %s %s";
 	private static final String CWEBP_COMMAND = "cwebp -q %d %s -o %s";
 	private static final String CWEBP_LOSSLESS_COMMAND = "cwebp -lossless -q %d %s -o %s";
@@ -24,6 +24,7 @@ public class Main {
 	private static final String JPEG = ".jpeg";
 	private static final String PNG = ".png";
 	private static final String WEBP = ".webp";
+	private static final String NINE_PATCH = ".9.png";
 	private static final ImageFilenameFilter imageFilter = new ImageFilenameFilter();
 	private static final DirectoryFilenameFilter directoryFilter = new DirectoryFilenameFilter();
 	private static final Runtime runtime = Runtime.getRuntime();
@@ -42,10 +43,12 @@ public class Main {
 						directory.getCanonicalPath() + OLD_DIRECTORY_SUFFIX)).waitFor();
 
 				executor = Executors.newFixedThreadPool(numCPUs);
-				if (directory.exists() && directory.isDirectory()) {
-					traverseDirectory(directory);
-				} else {
+				if (!directory.exists()) {
 					System.out.println("The specified directory does not exist.");
+				} else if (!directory.isDirectory()) {
+					System.out.println("The passed path is not a directory.");
+				} else {
+					traverseDirectory(directory);
 				}
 				executor.shutdown();
 				executor.awaitTermination(7, TimeUnit.DAYS); // Essentially, run until done.
@@ -54,13 +57,14 @@ public class Main {
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
+		} else {
+			printUsage();
 		}
 	}
 
 	private static boolean parseArguments(final String[] args) {
 		try {
 			if (args.length < 1) {
-				printUsage();
 				return false;
 			}
 
@@ -94,7 +98,6 @@ public class Main {
 			}
 			return true;
 		} catch (Exception e) {
-			printUsage();
 			return false;
 		}
 	}
@@ -204,7 +207,8 @@ public class Main {
 	private static class ImageFilenameFilter implements FilenameFilter {
 		@Override
 		public boolean accept(final File current, final String name) {
-			return name.endsWith(JPG) || name.endsWith(JPEG) || name.endsWith(PNG);
+			// 9-patch images are not supported in the WebP format.
+			return name.endsWith(JPG) || name.endsWith(JPEG) || (name.endsWith(PNG) && !name.endsWith(NINE_PATCH));
 		}
 	}
 
