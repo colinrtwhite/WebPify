@@ -1,16 +1,13 @@
 # Building Butteraugli
 
-Run the following commands in a Terminal window:
+Download [this shell script](get_butteraugli.sh) and run it:
 
-    cd ~
-    git clone https://github.com/google/butteraugli
-    cd butteraugli/src/
-    make
-    cd ~
-    vim .bash_profile
+    ./get_butteraugli.sh
 
-Paste the following command in the text file on its own line:
+If you get a "Permission denied" error, type:
 
-    export PATH=$PATH:~/butteraugli/src/
+    chmod +x get_butteraugli.sh
 
-And press the escape key then ":wq" then enter. Reboot your computer to update the path.
+Then re-run the shell script.
+
+Reboot your computer to update the system PATH.

@@ -12,22 +12,22 @@ Install the WebP format through [Homebrew](http://brew.sh). Run the following co
 
     brew install webp
 
-Build and add [Butteraugli](https://github.com/google/butteraugli) to your path. Make sure to leave the binary named "compare_pngs". If you're unsure how to install Butteraugli, see [here](butteraugli_instructions.md).
+Build and add [Butteraugli](https://github.com/google/butteraugli) to your system PATH. Make sure to leave the binary named "compare_pngs". If you're unsure how to set up Butteraugli, see [here](butteraugli_instructions.md).
 
 ## Usage
 Download the .jar file from the releases section.
 
-    java -jar webpify.jar path_to_directory
+    java -jar webpify.jar /path/to/target/directory
 
 Optional arguments:
 
-**-r** : Iterate through all files in the directory recursively.
+**-l** : Allow lossless WebP compression. This is only supported in 4.2.1 (technically API 18) and above on Android.
 
-**-l** : Allow lossless WebP compression. On Android this is only supported on API >= 17.
+**-r** : Enable recursive search for files in the input directory and its subdirectories.
 
-**-n [number_of_processes]** : The number of seperate processes to create. The default is 1.
+**-q [quality_threshold]** : Higher quality threshold values allow for more compression, but can result in noticeable visual quality loss. The default value of 1.0 is tuned for no perceivable quality loss.
 
-**-q [quality_threshold]** : The Butteraugli image difference threshold. Higher values allow for more compression, but can result in noticeable visual quality loss. Butteraugli defines 1.0 as "good". The default is 1.0.
+**-n [number_of_processes]** : The number of separate processes to create. The default is 1. The processes run in parallel to speed up the computation.
 
 ## License
     Copyright 2016 Colin White
