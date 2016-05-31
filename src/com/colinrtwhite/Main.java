@@ -12,19 +12,24 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 class Main {
-	private static final String CP_COMMAND = "cp -r %s %s";
 	private static final String COMPARE_PNGS_COMMAND = "compare_pngs %s %s";
+	private static final String CP_COMMAND = "cp -r %s %s";
 	private static final String CWEBP_COMMAND = "cwebp -q %d %s -o %s";
 	private static final String CWEBP_LOSSLESS_COMMAND = "cwebp -lossless -q %d %s -o %s";
 	private static final String DWEBP_COMMAND = "dwebp %s -o %s";
-	private static final String SIPS_COMMAND = "sips -s format png %s --out %s";
+	private static final String FILE_COMMAND = "file %s";
+	private static final String MV_COMMAND = "mv %s %s";
+	private static final String SIPS_FORMAT_COMMAND = "sips -s format png %s --out %s";
+	private static final String SIPS_RESIZE_COMMAND = "sips -Z %d %s";
 	private static final String RM_COMMAND = "rm %s";
-	private static final String OLD_DIRECTORY_SUFFIX = "_old";
 	private static final String JPG = ".jpg";
 	private static final String JPEG = ".jpeg";
+	private static final String NINE_PATCH = ".9.png";
+	private static final String ORIGINAL = ".original";
 	private static final String PNG = ".png";
 	private static final String WEBP = ".webp";
-	private static final String NINE_PATCH = ".9.png";
+	private static final String OLD_DIRECTORY_SUFFIX = "_old";
+	private static final int BUTTERAUGLI_MINIMUM_SIZE = 32;
 	private static final ImageFilenameFilter imageFilter = new ImageFilenameFilter();
 	private static final DirectoryFilenameFilter directoryFilter = new DirectoryFilenameFilter();
 	private static final Runtime runtime = Runtime.getRuntime();
@@ -122,12 +127,12 @@ class Main {
 				try {
 					if (searchForOptimalQuality(file, path, basePath, webPPath, webPFile, needsConvertToPng)) {
 						// Attempt lossless compression if enabled (requires minSdk >= 18 on Android).
-						if (allowLossless && getImageDissimilarity(100, path, basePath, webPPath,
-								needsConvertToPng, true) < qualityThreshold && isSmallerFile(webPFile, file)) {
+						if (allowLossless && getImageDissimilarity(100, path, basePath, webPPath, needsConvertToPng, true)
+								< qualityThreshold && isSmallerFile(webPFile, file)) {
 							bytesSaved += file.length() - webPFile.length();
 							runtime.exec(String.format(RM_COMMAND, path));
 						} else {
-							System.out.println("The following image couldn't be compressed any further than it already is: " + file.getPath());
+							System.out.println("The following image couldn't be compressed any more than it already is: " + file.getPath());
 							runtime.exec(String.format(RM_COMMAND, webPPath));
 						}
 					} else {
@@ -138,7 +143,7 @@ class Main {
 					System.out.println("An error occurred while compressing image: " + file.getPath());
 					hasError = true;
 				} finally {
-					// Attempt to clean up the temporary PNG images.
+					// Clean up any temporary PNG images.
 					try {
 						runtime.exec(String.format(RM_COMMAND, webPPath + PNG));
 						if (needsConvertToPng) {
@@ -167,8 +172,8 @@ class Main {
 		while (min != max) {
 			// Generate the temporary PNG images.
 			long quality = Math.round((min + max) / 2.0);
-			if (getImageDissimilarity(quality, path, basePath, webPPath, needsConvertToPng, false) <
-					qualityThreshold && isSmallerFile(webPFile, file)) {
+			if (getImageDissimilarity(quality, path, basePath, webPPath, needsConvertToPng, false) < qualityThreshold
+					&& isSmallerFile(webPFile, file)) {
 				// The image can be compressed more.
 				if (max == quality) {
 					break; // Prevent infinite loops.
@@ -189,21 +194,41 @@ class Main {
 		return min == 100;
 	}
 
-	private static double getImageDissimilarity(final long quality, final String path,
-			final String basePath, final String webPPath, final boolean needsConvertToPng, final boolean isLossless)
-			throws IOException, InterruptedException {
+	private static double getImageDissimilarity(final long quality, final String path, final String basePath,
+			final String webPPath, final boolean needsConvertToPng, final boolean isLossless) throws IOException, InterruptedException {
 		Main.runtime.exec(String.format(isLossless ? CWEBP_LOSSLESS_COMMAND : CWEBP_COMMAND, quality, path, webPPath)).waitFor();
 		Main.runtime.exec(String.format(DWEBP_COMMAND, webPPath, webPPath + PNG)).waitFor();
 		if (needsConvertToPng) {
-			Main.runtime.exec(String.format(SIPS_COMMAND, path, basePath + PNG)).waitFor();
+			Main.runtime.exec(String.format(SIPS_FORMAT_COMMAND, path, basePath + PNG)).waitFor();
+		}
+
+		// Verify that the image dimensions aren't too small to work with Butteraugli.
+		BufferedReader input = new BufferedReader(new InputStreamReader(
+				Main.runtime.exec(String.format(FILE_COMMAND, basePath + PNG)).getInputStream()));
+		String[] dimensions = input.readLine().split(",")[1].split("x");
+		input.close();
+		double width = Integer.valueOf(dimensions[0].trim());
+		double height = Integer.valueOf(dimensions[1].trim());
+		boolean performResize = Math.min(width, height) < BUTTERAUGLI_MINIMUM_SIZE;
+		if (performResize) {
+			// The image is too small to work with Butteraugli. Resize it.
+			Main.runtime.exec(String.format(CP_COMMAND, path, path + ORIGINAL)).waitFor();
+			Main.runtime.exec(String.format(CP_COMMAND, webPPath, webPPath + ORIGINAL)).waitFor();
+			int newHeight = (int) Math.ceil((BUTTERAUGLI_MINIMUM_SIZE / Math.min(width, height)) * Math.max(width, height));
+			Main.runtime.exec(String.format(SIPS_RESIZE_COMMAND, newHeight, basePath + PNG)).waitFor();
+			Main.runtime.exec(String.format(SIPS_RESIZE_COMMAND, newHeight, webPPath + PNG)).waitFor();
 		}
 
 		// Read in the dissimilarity result from Butteraugli.
-		BufferedReader input = new BufferedReader(new InputStreamReader(
-				Main.runtime.exec(String.format(COMPARE_PNGS_COMMAND, webPPath + PNG, basePath + PNG)).getInputStream()));
-		double dissimilarity = Double.valueOf(input.readLine());
+		input = new BufferedReader(new InputStreamReader(Main.runtime.exec(
+				String.format(COMPARE_PNGS_COMMAND, webPPath + PNG, basePath + PNG)).getInputStream()));
+		String line = input.readLine();
 		input.close();
-		return dissimilarity;
+		if (performResize) {
+			Main.runtime.exec(String.format(MV_COMMAND, path + ORIGINAL, path)).waitFor();
+			Main.runtime.exec(String.format(MV_COMMAND, webPPath + ORIGINAL, webPPath)).waitFor();
+		}
+		return Double.valueOf(line);
 	}
 
 	private static boolean isSmallerFile(final File fileA, final File fileB) {
