@@ -108,7 +108,7 @@ class Main {
 	}
 
 	private static void printUsage() {
-		System.out.println("Usage: java -jar webpify.jar path_to_directory [[-n <number_of_processes>] [-q <quality_threshold>] [-r] [-l]]");
+		System.out.println("Usage: java -jar webpify.jar /path/to/target/directory [[-n <number_of_processes>] [-q <quality_threshold>] [-r] [-l]]");
 	}
 
 	private static void traverseDirectory(final File directory) {
