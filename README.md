@@ -1,9 +1,8 @@
 # WebPify
-WebPify is a command line program for Mac OS X to batch compress .png, .jpeg, and .jpg images by converting them to .webp files.
-The converter relies on [Google's Butteraugli](https://github.com/google/butteraugli) to measure the difference between images with respect to human vision.
+WebPify is a command line program for Mac OS X to batch compress .png, .jpeg, and .jpg images by converting them to .webp files. The converter relies on [Google's Butteraugli](https://github.com/google/butteraugli) to measure the visual difference between images.
 
-The human eye doesn't notice very small changes to an image - a fact we can use for better image compression.
-This script uses binary search to find the best lossy compression value for an image to maximize space savings with no perceivable visual degradation.
+The human eye can't percieve very small changes to an image - a fact we can use for better image compression.
+This script uses binary search to find the best lossy compression value for an image to maximize space savings with no perceivable visual degradation. If no suitable lossy compression value is found, it will fall back on loseless compression.
 
 This script was inspired by [this blog post](https://medium.com/@duhroach/reducing-jpg-file-size-e5b27df3257c#.u6yh62vjk) by Colt McAnlis.
 
@@ -21,13 +20,13 @@ Download the .jar file from the releases section.
 
 Optional arguments:
 
-**-l** : Allow lossless WebP compression. This is only supported in 4.2.1 (technically API 18) and above on Android.
+**-l** : Enable lossless WebP compression. This is only supported in 4.2.1 (technically API 18) and above on Android.
 
-**-r** : Enable recursive search for files in the input directory and its subdirectories.
+**-r** : Enable recursive search for image files in the input directory and its subdirectories.
 
 **-q [quality_threshold]** : Higher quality threshold values allow for more compression, but can result in noticeable visual quality loss. The default value of 1.0 is tuned for no perceivable quality loss.
 
-**-n [number_of_processes]** : The number of separate processes to create. The default is 1. The processes run in parallel to speed up the computation.
+**-n [number_of_processes]** : The number of processes to run in parallel. The default value is 1.
 
 ## License
     Copyright 2016 Colin White
