@@ -34,7 +34,7 @@ class Main {
 	private static final DirectoryFilenameFilter directoryFilter = new DirectoryFilenameFilter();
 	private static final Runtime runtime = Runtime.getRuntime();
 	private static boolean allowLossless = false, isRecursive = false;
-	private static int numCPUs = 1;
+	private static int numCPUs = 2;
 	private static double qualityThreshold = 1;
 	private static long totalOriginalSize = 0, bytesSaved = 0;
 	private static File directory;

@@ -1,17 +1,17 @@
 # WebPify
-WebPify is a command line program for Mac OS X to batch compress .png, .jpeg, and .jpg images by converting them to .webp files. The converter relies on [Google's Butteraugli](https://github.com/google/butteraugli) to measure the visual difference between images.
+WebPify is a command line program for Mac OS X to batch compress .png and .jpg images by converting them to .webp files. The converter relies on [Google's Butteraugli](https://github.com/google/butteraugli) to measure the visual difference between images.
 
-The human eye can't percieve very small changes to an image - a fact we can use for better image compression.
+The human eye can't perceive very small changes to an image - a fact we can use for better image compression.
 This script uses binary search to find the best lossy compression value for an image to maximize space savings with no perceivable visual degradation. If no suitable lossy compression value is found, it will fall back on loseless compression.
 
 This script was inspired by [this blog post](https://medium.com/@duhroach/reducing-jpg-file-size-e5b27df3257c#.u6yh62vjk) by Colt McAnlis.
 
-## Setting up
+## Set Up
 Install the WebP format through [Homebrew](http://brew.sh). Run the following command in a Terminal window:
 
     brew install webp
 
-Build and add [Butteraugli](https://github.com/google/butteraugli) to your system PATH. Make sure to leave the binary named "compare_pngs". If you're unsure how to set up Butteraugli, see [here](butteraugli_instructions.md).
+[Follow these instructions](butteraugli_instructions.md) to build and add [Butteraugli](https://github.com/google/butteraugli) to your system PATH. Make sure to leave the binary named "compare_pngs".
 
 ## Usage
 Download the .jar file from the releases section.
@@ -26,7 +26,7 @@ Optional arguments:
 
 **-q [quality_threshold]** : Higher quality threshold values allow for more compression, but can result in noticeable visual quality loss. The default value of 1.0 is tuned for no perceivable quality loss.
 
-**-n [number_of_processes]** : The number of processes to run in parallel. The default value is 1.
+**-n [number_of_processes]** : The number of processes to run in parallel. The default value is 2.
 
 ## License
     Copyright 2016 Colin White
