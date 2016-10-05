@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.FileFilter;
 import java.io.FilenameFilter;
 import java.lang.Runtime;
+import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -30,51 +31,53 @@ class Main {
 	private static final String WEBP = ".webp";
 	private static final String OLD_DIRECTORY_SUFFIX = "_old";
 	private static final int BUTTERAUGLI_MINIMUM_SIZE = 32;
-	private static final ImageFilenameFilter imageFilter = new ImageFilenameFilter();
-	private static final DirectoryFilenameFilter directoryFilter = new DirectoryFilenameFilter();
-	private static final Runtime runtime = Runtime.getRuntime();
+	private static final DirectoryFilenameFilter DIRECTORY_FILTER = new DirectoryFilenameFilter();
+	private static final ImageFilenameFilter IMAGE_FILTER = new ImageFilenameFilter();
+	private static final Runtime RUNTIME = Runtime.getRuntime();
 	private static boolean allowLossless = false, isRecursive = false;
 	private static int numCPUs = 2;
 	private static double qualityThreshold = 1;
 	private static long totalOriginalSize = 0, bytesSaved = 0;
-	private static File directory;
-	private static ExecutorService executor;
 
 	public static void main(final String[] args) {
-		if (parseArguments(args)) {
-			try {
-				// Backup the input directory before compressing its files.
-				runtime.exec(String.format(CP_COMMAND, directory.getCanonicalPath(),
-						directory.getCanonicalPath() + OLD_DIRECTORY_SUFFIX)).waitFor();
-
-				executor = Executors.newFixedThreadPool(numCPUs);
-				if (!directory.exists()) {
-					System.out.println("The specified directory does not exist.");
-				} else if (!directory.isDirectory()) {
-					System.out.println("The passed path is not a directory.");
-				} else {
-					traverseDirectory(directory);
-				}
-				executor.shutdown();
-				executor.awaitTermination(7, TimeUnit.DAYS); // Essentially, run until done.
-				System.out.println(String.format("Total compression savings: %d bytes (%.2f%% size reduction).",
-						bytesSaved, totalOriginalSize == 0 ? 0 : 100.0 * bytesSaved / totalOriginalSize));
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		} else {
+		File directory = parseArguments(args);
+		if (directory == null) {
 			printUsage();
+			return;
+		}
+
+		try {
+			// Backup the input directory before compressing its files.
+			RUNTIME.exec(String.format(CP_COMMAND, directory.getPath(), directory.getPath() + OLD_DIRECTORY_SUFFIX)).waitFor();
+
+			ExecutorService executor = Executors.newFixedThreadPool(numCPUs);
+			if (!directory.exists()) {
+				System.out.println("The specified directory does not exist.");
+			} else if (!directory.isDirectory()) {
+				System.out.println("The passed path is not a directory.");
+			} else {
+				traverseDirectory(executor, directory);
+			}
+			executor.shutdown();
+			executor.awaitTermination(7, TimeUnit.DAYS); // Essentially, run until done or killed.
+			System.out.println(String.format("Total compression savings: %d bytes (%.2f%% size reduction).",
+					bytesSaved, totalOriginalSize > 0 ? (100.0 * bytesSaved) / totalOriginalSize : 0));
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 
-	private static boolean parseArguments(final String[] args) {
+	private static String getPathIgnoreSpaces(final File file) {
+		return file.getPath().replace(" ", "\\ ");
+	}
+
+	private static File parseArguments(final String[] args) {
 		try {
 			if (args.length < 1) {
-				return false;
+				return null;
 			}
 
-			// Read in the directory argument then any optional arguments.
-			directory = new File(args[0]);
+			// Read in and validate any optional arguments.
 			boolean expectsNumCPUsNext = false, expectsQualityNext = false;
 			for (int i = 1; i < args.length; i++) {
 				switch (args[i]) {
@@ -93,17 +96,18 @@ class Main {
 					default:
 						if (expectsNumCPUsNext) {
 							numCPUs = Integer.valueOf(args[i]);
+							expectsNumCPUsNext = false;
 						} else if (expectsQualityNext) {
 							qualityThreshold = Double.valueOf(args[i]);
+							expectsQualityNext = false;
 						}
-						expectsNumCPUsNext = false;
-						expectsQualityNext = false;
 						break;
 				}
 			}
-			return true;
+			// Return the directory to show that we parse the arguments successfully.
+			return new File(args[0]);
 		} catch (Exception e) {
-			return false;
+			return null;
 		}
 	}
 
@@ -111,58 +115,61 @@ class Main {
 		System.out.println("Usage: java -jar webpify.jar /path/to/target/directory [[-n <number_of_processes>] [-q <quality_threshold>] [-r] [-l]]");
 	}
 
-	private static void traverseDirectory(final File directory) {
-		executor.execute(() -> System.out.println("Compressing files in " + directory.getPath() + "..."));
-		for (File file : directory.listFiles(imageFilter)) {
-			executor.execute(() -> {
-				// Compute some initial information about the image file.
-				String path = file.getPath();
-				String basePath = path.substring(0, path.lastIndexOf("."));
-				String webPPath = basePath + WEBP;
-				File webPFile = new File(webPPath);
-				boolean needsConvertToPng = !file.getName().endsWith(PNG);
-				boolean hasError = false;
-				totalOriginalSize += file.length();
+	private static void traverseDirectory(final ExecutorService executor, final File directory) {
+		Arrays.stream(getImagesOrDirectories(directory, true)).forEach(file -> executor.execute(() -> {
+			// Compute some initial information about the image file.
+			String path = file.getPath();
+			String basePath = path.substring(0, path.lastIndexOf("."));
+			String webPPath = basePath + WEBP;
+			File webPFile = new File(webPPath);
+			boolean needsConvertToPng = !file.getName().endsWith(PNG);
+			boolean hasError = false;
+			long fileSize = file.length();
+			totalOriginalSize += fileSize;
 
-				try {
-					if (searchForOptimalQuality(file, path, basePath, webPPath, webPFile, needsConvertToPng)) {
-						// Attempt lossless compression if enabled (requires minSdk >= 18 on Android).
-						if (allowLossless && getImageDissimilarity(100, path, basePath, webPPath, needsConvertToPng, true)
-								< qualityThreshold && isSmallerFile(webPFile, file)) {
-							bytesSaved += file.length() - webPFile.length();
-							runtime.exec(String.format(RM_COMMAND, path));
-						} else {
-							System.out.println("The following image couldn't be compressed any more than it already is: " + file.getPath());
-							runtime.exec(String.format(RM_COMMAND, webPPath));
-						}
+			try {
+				if (searchForOptimalQuality(file, path, basePath, webPPath, webPFile, needsConvertToPng)) {
+					// Attempt lossless compression if enabled (requires minSdk >= 18 on Android).
+					if (allowLossless && getImageDissimilarity(100, path, basePath, webPPath, needsConvertToPng, true)
+							< qualityThreshold && isSmallerFile(webPFile, file)) {
+						bytesSaved += fileSize - webPFile.length();
+						RUNTIME.exec(String.format(RM_COMMAND, path));
+						System.out.println("Successfully compressed file: " + path);
 					} else {
-						bytesSaved += (file.length() - webPFile.length());
-						runtime.exec(String.format(RM_COMMAND, path));
+						RUNTIME.exec(String.format(RM_COMMAND, webPPath));
+						System.out.println("The following image couldn't be compressed any more than it already is: " + path);
 					}
-				} catch (Exception e) {
-					System.out.println("An error occurred while compressing image: " + file.getPath());
-					hasError = true;
-				} finally {
-					// Clean up any temporary PNG images.
-					try {
-						runtime.exec(String.format(RM_COMMAND, webPPath + PNG));
-						if (needsConvertToPng) {
-							runtime.exec(String.format(RM_COMMAND, basePath + PNG));
-						}
-						if (hasError) {
-							runtime.exec(String.format(RM_COMMAND, webPPath));
-						}
-					} catch (Exception e) { /* Consume the exception. */ }
+				} else {
+					bytesSaved += (fileSize - webPFile.length());
+					RUNTIME.exec(String.format(RM_COMMAND, path));
+					System.out.println("Successfully compressed file: " + path);
 				}
-			});
-		}
+			} catch (Exception e) {
+				System.out.println("An error occurred while compressing image: " + path);
+				hasError = true;
+			} finally {
+				// Clean up any temporary PNG images.
+				try {
+					RUNTIME.exec(String.format(RM_COMMAND, webPPath + PNG));
+					if (needsConvertToPng) {
+						RUNTIME.exec(String.format(RM_COMMAND, basePath + PNG));
+					}
+					if (hasError) {
+						RUNTIME.exec(String.format(RM_COMMAND, webPPath));
+					}
+				} catch (Exception e) { /* Consume the exception. */ }
+			}
+		}));
 
 		// Traverse any subdirectories.
 		if (isRecursive) {
-			for (File file : directory.listFiles(directoryFilter)) {
-				traverseDirectory(file);
-			}
+			Arrays.stream(getImagesOrDirectories(directory, false)).forEach(file -> traverseDirectory(executor, file));
 		}
+	}
+
+	private static File[] getImagesOrDirectories(final File directory, final boolean getImages) {
+		File[] files = getImages ? directory.listFiles(IMAGE_FILTER) : directory.listFiles(DIRECTORY_FILTER);
+		return files != null ? files : new File[0];
 	}
 
 	private static boolean searchForOptimalQuality(final File file, final String path, final String basePath,
@@ -196,15 +203,15 @@ class Main {
 
 	private static double getImageDissimilarity(final long quality, final String path, final String basePath,
 			final String webPPath, final boolean needsConvertToPng, final boolean isLossless) throws IOException, InterruptedException {
-		Main.runtime.exec(String.format(isLossless ? CWEBP_LOSSLESS_COMMAND : CWEBP_COMMAND, quality, path, webPPath)).waitFor();
-		Main.runtime.exec(String.format(DWEBP_COMMAND, webPPath, webPPath + PNG)).waitFor();
+		RUNTIME.exec(String.format(isLossless ? CWEBP_LOSSLESS_COMMAND : CWEBP_COMMAND, quality, path, webPPath)).waitFor();
+		RUNTIME.exec(String.format(DWEBP_COMMAND, webPPath, webPPath + PNG)).waitFor();
 		if (needsConvertToPng) {
-			Main.runtime.exec(String.format(SIPS_FORMAT_COMMAND, path, basePath + PNG)).waitFor();
+			RUNTIME.exec(String.format(SIPS_FORMAT_COMMAND, path, basePath + PNG)).waitFor();
 		}
 
 		// Verify that the image dimensions aren't too small to work with Butteraugli.
 		BufferedReader input = new BufferedReader(new InputStreamReader(
-				Main.runtime.exec(String.format(FILE_COMMAND, basePath + PNG)).getInputStream()));
+				RUNTIME.exec(String.format(FILE_COMMAND, basePath + PNG)).getInputStream()));
 		String[] dimensions = input.readLine().split(",")[1].split("x");
 		input.close();
 		double width = Integer.valueOf(dimensions[0].trim());
@@ -212,21 +219,21 @@ class Main {
 		boolean performResize = Math.min(width, height) < BUTTERAUGLI_MINIMUM_SIZE;
 		if (performResize) {
 			// The image is too small to work with Butteraugli. Resize it.
-			Main.runtime.exec(String.format(CP_COMMAND, path, path + ORIGINAL)).waitFor();
-			Main.runtime.exec(String.format(CP_COMMAND, webPPath, webPPath + ORIGINAL)).waitFor();
+			RUNTIME.exec(String.format(CP_COMMAND, path, path + ORIGINAL)).waitFor();
+			RUNTIME.exec(String.format(CP_COMMAND, webPPath, webPPath + ORIGINAL)).waitFor();
 			int newHeight = (int) Math.ceil((BUTTERAUGLI_MINIMUM_SIZE / Math.min(width, height)) * Math.max(width, height));
-			Main.runtime.exec(String.format(SIPS_RESIZE_COMMAND, newHeight, basePath + PNG)).waitFor();
-			Main.runtime.exec(String.format(SIPS_RESIZE_COMMAND, newHeight, webPPath + PNG)).waitFor();
+			RUNTIME.exec(String.format(SIPS_RESIZE_COMMAND, newHeight, basePath + PNG)).waitFor();
+			RUNTIME.exec(String.format(SIPS_RESIZE_COMMAND, newHeight, webPPath + PNG)).waitFor();
 		}
 
 		// Read in the dissimilarity result from Butteraugli.
-		input = new BufferedReader(new InputStreamReader(Main.runtime.exec(
+		input = new BufferedReader(new InputStreamReader(RUNTIME.exec(
 				String.format(COMPARE_PNGS_COMMAND, webPPath + PNG, basePath + PNG)).getInputStream()));
 		String line = input.readLine();
 		input.close();
 		if (performResize) {
-			Main.runtime.exec(String.format(MV_COMMAND, path + ORIGINAL, path)).waitFor();
-			Main.runtime.exec(String.format(MV_COMMAND, webPPath + ORIGINAL, webPPath)).waitFor();
+			RUNTIME.exec(String.format(MV_COMMAND, path + ORIGINAL, path)).waitFor();
+			RUNTIME.exec(String.format(MV_COMMAND, webPPath + ORIGINAL, webPPath)).waitFor();
 		}
 		return Double.valueOf(line);
 	}
