@@ -1,5 +1,5 @@
 # WebPify
-WebPify is a command line program for Mac OS X to batch compress .png and .jpg images by converting them to .webp files. The converter relies on [Google's Butteraugli](https://github.com/google/butteraugli) to measure the visual difference between images.
+WebPify is a command line program for MacOS to batch compress .png and .jpg images by converting them to .webp files. The converter relies on [Google's Butteraugli](https://github.com/google/butteraugli) to measure the visual difference between images.
 
 The human eye can't perceive very small changes to an image - a fact we can use for better image compression.
 This script uses binary search to find the best lossy compression value for an image to maximize space savings with no perceivable visual degradation. If no suitable lossy compression value is found, it will fall back on loseless compression.
@@ -7,9 +7,9 @@ This script uses binary search to find the best lossy compression value for an i
 This script was inspired by [this blog post](https://medium.com/@duhroach/reducing-jpg-file-size-e5b27df3257c#.u6yh62vjk) by Colt McAnlis.
 
 ## Set Up
-Install the WebP format through [Homebrew](http://brew.sh). Run the following command in a Terminal window:
+Install the WebP format and libpng through [Homebrew](http://brew.sh). Run the following commands in a Terminal window:
 
-    brew install webp
+    brew install webp libpng
 
 [Follow these instructions](butteraugli_instructions.md) to build and add [Butteraugli](https://github.com/google/butteraugli) to your system PATH. Make sure to leave the binary named "compare_pngs".
 
