@@ -1,6 +1,7 @@
 package com.colinrtwhite;
 
 import java.io.*;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -180,7 +181,7 @@ class Main {
 		// Generate WebP and PNG versions of the image at the input quality.
 		List<String> arguments = Arrays.asList("cwebp", "-q", String.valueOf(quality), path, "-o", webPPath);
 		if (isLossless) {
-			arguments.add(1, "-lossless");
+			(arguments = new ArrayList<>(arguments)).add(1, "-lossless");
 		}
 		new ProcessBuilder(arguments).start().waitFor();
 		new ProcessBuilder("dwebp", webPPath, "-o", webPPath + PNG).start().waitFor();
