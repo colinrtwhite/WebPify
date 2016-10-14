@@ -1,39 +1,18 @@
 package com.colinrtwhite;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.FileFilter;
-import java.io.FilenameFilter;
-import java.lang.Runtime;
+import java.io.*;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 class Main {
-	private static final String COMPARE_PNGS_COMMAND = "compare_pngs %s %s";
-	private static final String CP_COMMAND = "cp -r %s %s";
-	private static final String CWEBP_COMMAND = "cwebp -q %d %s -o %s";
-	private static final String CWEBP_LOSSLESS_COMMAND = "cwebp -lossless -q %d %s -o %s";
-	private static final String DWEBP_COMMAND = "dwebp %s -o %s";
-	private static final String FILE_COMMAND = "file %s";
-	private static final String MV_COMMAND = "mv %s %s";
-	private static final String SIPS_FORMAT_COMMAND = "sips -s format png %s --out %s";
-	private static final String SIPS_RESIZE_COMMAND = "sips -Z %d %s";
-	private static final String RM_COMMAND = "rm %s";
-	private static final String JPG = ".jpg";
-	private static final String JPEG = ".jpeg";
-	private static final String NINE_PATCH = ".9.png";
-	private static final String ORIGINAL = ".original";
-	private static final String PNG = ".png";
-	private static final String WEBP = ".webp";
-	private static final String OLD_DIRECTORY_SUFFIX = "_old";
+	private static final String JPG = ".jpg", JPEG = ".jpeg", PNG = ".png", WEBP = ".webp",
+			NINE_PATCH = ".9.png", ORIGINAL = ".original";
 	private static final int BUTTERAUGLI_MINIMUM_SIZE = 32;
 	private static final DirectoryFilenameFilter DIRECTORY_FILTER = new DirectoryFilenameFilter();
 	private static final ImageFilenameFilter IMAGE_FILTER = new ImageFilenameFilter();
-	private static final Runtime RUNTIME = Runtime.getRuntime();
 	private static boolean allowLossless = false, isRecursive = false;
 	private static int numCPUs = 2;
 	private static double qualityThreshold = 1;
@@ -48,13 +27,13 @@ class Main {
 
 		try {
 			// Backup the input directory before compressing its files.
-			RUNTIME.exec(String.format(CP_COMMAND, directory.getPath(), directory.getPath() + OLD_DIRECTORY_SUFFIX)).waitFor();
+			new ProcessBuilder("cp", "-r", directory.getPath(), directory.getPath() + "_old").start().waitFor();
 
 			ExecutorService executor = Executors.newFixedThreadPool(numCPUs);
 			if (!directory.exists()) {
-				System.out.println("The specified directory does not exist.");
+				System.out.println("The input directory does not exist.");
 			} else if (!directory.isDirectory()) {
-				System.out.println("The passed path is not a directory.");
+				System.out.println("The input path is not a directory.");
 			} else {
 				traverseDirectory(executor, directory);
 			}
@@ -65,10 +44,6 @@ class Main {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-	}
-
-	private static String getPathIgnoreSpaces(final File file) {
-		return file.getPath().replace(" ", "\\ ");
 	}
 
 	private static File parseArguments(final String[] args) {
@@ -133,15 +108,15 @@ class Main {
 					if (allowLossless && getImageDissimilarity(100, path, basePath, webPPath, needsConvertToPng, true)
 							< qualityThreshold && isSmallerFile(webPFile, file)) {
 						bytesSaved += fileSize - webPFile.length();
-						RUNTIME.exec(String.format(RM_COMMAND, path));
+						new ProcessBuilder("rm", path).start();
 						System.out.println("Successfully compressed file: " + path);
 					} else {
-						RUNTIME.exec(String.format(RM_COMMAND, webPPath));
-						System.out.println("The following image couldn't be compressed any more than it already is: " + path);
+						new ProcessBuilder("rm", webPPath).start();
+						System.out.println("The following image couldn't be compressed any further: " + path);
 					}
 				} else {
 					bytesSaved += (fileSize - webPFile.length());
-					RUNTIME.exec(String.format(RM_COMMAND, path));
+					new ProcessBuilder("rm", path).start();
 					System.out.println("Successfully compressed file: " + path);
 				}
 			} catch (Exception e) {
@@ -150,12 +125,12 @@ class Main {
 			} finally {
 				// Clean up any temporary PNG images.
 				try {
-					RUNTIME.exec(String.format(RM_COMMAND, webPPath + PNG));
+					new ProcessBuilder("rm", webPPath + PNG).start();
 					if (needsConvertToPng) {
-						RUNTIME.exec(String.format(RM_COMMAND, basePath + PNG));
+						new ProcessBuilder("rm", basePath + PNG).start();
 					}
 					if (hasError) {
-						RUNTIME.exec(String.format(RM_COMMAND, webPPath));
+						new ProcessBuilder("rm", webPPath).start();
 					}
 				} catch (Exception e) { /* Consume the exception. */ }
 			}
@@ -203,15 +178,19 @@ class Main {
 
 	private static double getImageDissimilarity(final long quality, final String path, final String basePath,
 			final String webPPath, final boolean needsConvertToPng, final boolean isLossless) throws IOException, InterruptedException {
-		RUNTIME.exec(String.format(isLossless ? CWEBP_LOSSLESS_COMMAND : CWEBP_COMMAND, quality, path, webPPath)).waitFor();
-		RUNTIME.exec(String.format(DWEBP_COMMAND, webPPath, webPPath + PNG)).waitFor();
+		List<String> arguments = Arrays.asList("cwebp", "-q", String.valueOf(quality), path, "-o", webPPath);
+		if (isLossless) {
+			arguments.add(1, "-lossless");
+		}
+		new ProcessBuilder(arguments).start().waitFor();
+		new ProcessBuilder("dwebp", webPPath, "-o", webPPath + PNG).start().waitFor();
 		if (needsConvertToPng) {
-			RUNTIME.exec(String.format(SIPS_FORMAT_COMMAND, path, basePath + PNG)).waitFor();
+			new ProcessBuilder("sips", "-s", "format", "png", path, "--out", basePath + PNG).start().waitFor();
 		}
 
 		// Verify that the image dimensions aren't too small to work with Butteraugli.
 		BufferedReader input = new BufferedReader(new InputStreamReader(
-				RUNTIME.exec(String.format(FILE_COMMAND, basePath + PNG)).getInputStream()));
+				new ProcessBuilder("file", basePath + PNG).start().getInputStream()));
 		String[] dimensions = input.readLine().split(",")[1].split("x");
 		input.close();
 		double width = Integer.valueOf(dimensions[0].trim());
@@ -219,21 +198,21 @@ class Main {
 		boolean performResize = Math.min(width, height) < BUTTERAUGLI_MINIMUM_SIZE;
 		if (performResize) {
 			// The image is too small to work with Butteraugli. Resize it.
-			RUNTIME.exec(String.format(CP_COMMAND, path, path + ORIGINAL)).waitFor();
-			RUNTIME.exec(String.format(CP_COMMAND, webPPath, webPPath + ORIGINAL)).waitFor();
+			new ProcessBuilder("cp", "-r", path, path + ORIGINAL).start().waitFor();
+			new ProcessBuilder("cp", "-r", webPPath, webPPath + ORIGINAL).start().waitFor();
 			int newHeight = (int) Math.ceil((BUTTERAUGLI_MINIMUM_SIZE / Math.min(width, height)) * Math.max(width, height));
-			RUNTIME.exec(String.format(SIPS_RESIZE_COMMAND, newHeight, basePath + PNG)).waitFor();
-			RUNTIME.exec(String.format(SIPS_RESIZE_COMMAND, newHeight, webPPath + PNG)).waitFor();
+			new ProcessBuilder("sips", "-Z", String.valueOf(newHeight), basePath + PNG).start().waitFor();
+			new ProcessBuilder("sips", "-Z", String.valueOf(newHeight), webPPath + PNG).start().waitFor();
 		}
 
 		// Read in the dissimilarity result from Butteraugli.
-		input = new BufferedReader(new InputStreamReader(RUNTIME.exec(
-				String.format(COMPARE_PNGS_COMMAND, webPPath + PNG, basePath + PNG)).getInputStream()));
+		input = new BufferedReader(new InputStreamReader(
+				new ProcessBuilder("compare_pngs", webPPath + PNG, basePath + PNG).start().getInputStream()));
 		String line = input.readLine();
 		input.close();
 		if (performResize) {
-			RUNTIME.exec(String.format(MV_COMMAND, path + ORIGINAL, path)).waitFor();
-			RUNTIME.exec(String.format(MV_COMMAND, webPPath + ORIGINAL, webPPath)).waitFor();
+			new ProcessBuilder("mv", path + ORIGINAL, path).start().waitFor();
+			new ProcessBuilder("mv", webPPath + ORIGINAL, webPPath).start().waitFor();
 		}
 		return Double.valueOf(line);
 	}
