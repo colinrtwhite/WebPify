@@ -8,8 +8,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 class Main {
-	private static final String JPG = ".jpg", JPEG = ".jpeg", PNG = ".png", WEBP = ".webp",
-			NINE_PATCH = ".9.png", ORIGINAL = ".original";
+	private static final String JPG = ".jpg", JPEG = ".jpeg", PNG = ".png", WEBP = ".webp", NINE_PATCH = ".9.png", ORIGINAL = ".original";
 	private static final int BUTTERAUGLI_MINIMUM_SIZE = 32;
 	private static final DirectoryFilenameFilter DIRECTORY_FILTER = new DirectoryFilenameFilter();
 	private static final ImageFilenameFilter IMAGE_FILTER = new ImageFilenameFilter();
@@ -178,6 +177,7 @@ class Main {
 
 	private static double getImageDissimilarity(final long quality, final String path, final String basePath,
 			final String webPPath, final boolean needsConvertToPng, final boolean isLossless) throws IOException, InterruptedException {
+		// Generate WebP and PNG versions of the image at the input quality.
 		List<String> arguments = Arrays.asList("cwebp", "-q", String.valueOf(quality), path, "-o", webPPath);
 		if (isLossless) {
 			arguments.add(1, "-lossless");
