@@ -8,10 +8,12 @@ This program was inspired by [this blog post](https://medium.com/@duhroach/reduc
 
 ## Example
 
-Original JPEG | WebP (-q 1.0) | WebP (-q 2.0)
+Original JPG | WebP (-q 1.0) | WebP (-q 2.0)
 --- | --- | ---
-![](example.jpg) | ![WebP files are supported in Google Chrome](example-1.webp) | ![WebP files are supported in Google Chrome](example-2.webp)
+![](example.jpg) | ![](example-1.webp) | ![](example-2.webp)
 40 KB (0.00% size reduction) | 26 KB (34.15% size reduction) | 17 KB (57.49% size reduction)
+
+WebP files are supported by the Google Chrome and Opera web browsers.
 
 ## Set Up
 Install the libjpeg, libpng, and the WebP format through [Homebrew](http://brew.sh). Run the following commands in a Terminal window:
