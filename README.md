@@ -6,6 +6,13 @@ This program uses binary search to find the best lossy compression value for an 
 
 This program was inspired by [this blog post](https://medium.com/@duhroach/reducing-jpg-file-size-e5b27df3257c#.u6yh62vjk) by Colt McAnlis.
 
+## Example
+
+Original JPEG | WebP (-q 1.0) | WebP (-q 2.0)
+--- | --- | ---
+![](example.jpg=250x) | ![WebP files are supported in Google Chrome](example-1.webp=250x) | ![WebP files are supported in Google Chrome](example-2.webp=250x)
+40 KB (0.00% size reduction) | 26 KB (34.15% size reduction) | 17 KB (57.49% size reduction)
+
 ## Set Up
 Install the libjpeg, libpng, and the WebP format through [Homebrew](http://brew.sh). Run the following commands in a Terminal window:
 
