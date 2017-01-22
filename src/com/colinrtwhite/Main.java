@@ -73,7 +73,9 @@ class Main {
 							numCPUs = Integer.valueOf(args[i]);
 							expectsNumCPUsNext = false;
 						} else if (expectsQualityNext) {
-							qualityThreshold = Double.valueOf(args[i]);
+							if ((qualityThreshold = Double.valueOf(args[i])) <= 0) {
+								throw new IllegalArgumentException("The quality threshold must be > 0.");
+							}
 							expectsQualityNext = false;
 						}
 						break;
@@ -101,28 +103,22 @@ class Main {
 			totalOriginalSize += fileSize;
 
 			try {
-				if (searchForOptimalQuality(file, path, webPPath, webPFile)) {
-					// Attempt lossless compression if enabled (requires minSdk >= 18 on Android).
-					if (allowLossless && getImageDissimilarity(100, path, webPPath, true)
-							< qualityThreshold && isSmallerFile(webPFile, file)) {
-						bytesSaved += fileSize - webPFile.length();
-						new ProcessBuilder("rm", path).start();
-						System.out.println("Successfully compressed file: " + path);
-					} else {
-						new ProcessBuilder("rm", webPPath).start();
-						System.out.println("The following image couldn't be compressed any further: " + path);
-					}
-				} else {
+				// Compress the image with the lowest quality value possible that results in an image below the dissimilarity threshold.
+				// Check that it is smaller than the original file.
+				if (searchForOptimalQuality(path, webPPath) && webPFile.length() < file.length()) {
 					bytesSaved += (fileSize - webPFile.length());
 					new ProcessBuilder("rm", path).start();
 					System.out.println("Successfully compressed file: " + path);
+				} else {
+					new ProcessBuilder("rm", webPPath).start();
+					System.out.println("The following image couldn't be compressed any further: " + path);
 				}
 			} catch (Exception e) {
 				System.out.println("An error occurred while compressing image: " + path);
 				hasError = true;
 			} finally {
-				// Clean up any temporary PNG images.
 				try {
+					// Clean up any temporary PNG images.
 					new ProcessBuilder("rm", webPPath + PNG).start();
 					if (hasError) {
 						new ProcessBuilder("rm", webPPath).start();
@@ -142,38 +138,28 @@ class Main {
 		return files != null ? files : new File[0];
 	}
 
-	private static boolean searchForOptimalQuality(final File file, final String path, final String webPPath,
-			final File webPFile) throws IOException, InterruptedException {
+	private static boolean searchForOptimalQuality(final String path, final String webPPath) throws IOException, InterruptedException {
 		// Perform binary search to find the best WebP compression value.
-		long min = 0, max = 100;
+		int min = 0, max = 100;
 		while (min != max) {
-			// Generate the temporary PNG images.
-			long quality = Math.round((min + max) / 2.0);
-			if (getImageDissimilarity(quality, path, webPPath, false) < qualityThreshold
-					&& isSmallerFile(webPFile, file)) {
+			int quality = (int) Math.round((min + max) / 2.0);
+			if (getImageDissimilarity(quality, path, webPPath, false) < qualityThreshold) {
 				// The image can be compressed more.
-				if (max == quality) {
-					break; // Prevent infinite loops.
-				} else {
-					max = quality;
-				}
+				max = (max == quality) ? quality - 1 : quality;
 			} else {
-				// Compression is now visible to the human eye (or the file got larger).
-				// Scale the compression back a bit (if we can).
-				if (min == quality) {
-					break; // Prevent infinite loops.
-				} else {
-					min = quality;
-				}
+				// Scale the compression back a bit.
+				min = (min == quality) ? quality + 1 : quality;
 			}
 		}
-		// Return true if the binary search failed to find a valid compression value.
-		return min == 100;
+
+		// Return true if the binary search found a valid compression value.
+		// If we couldn't find a valid compression value, attempt lossless compression (if enabled).
+		return min != 100 || (allowLossless && getImageDissimilarity(100, path, webPPath, true) < qualityThreshold);
 	}
 
-	private static double getImageDissimilarity(final long quality, final String path, final String webPPath,
+	private static double getImageDissimilarity(final int quality, final String path, final String webPPath,
 			final boolean isLossless) throws IOException, InterruptedException {
-		// Generate WebP and PNG versions of the image at the input quality.
+		// Generate a WebP version of the image at the input quality.
 		List<String> arguments = Arrays.asList("cwebp", "-q", String.valueOf(quality), path, "-o", webPPath);
 		if (isLossless) {
 			(arguments = new ArrayList<>(arguments)).add(1, "-lossless");
@@ -182,19 +168,28 @@ class Main {
 		new ProcessBuilder("dwebp", webPPath, "-o", webPPath + PNG).start().waitFor();
 
 		// Verify that the image dimensions aren't too small to work with Butteraugli.
-		BufferedReader input = new BufferedReader(new InputStreamReader(new ProcessBuilder("file", path).start().getInputStream()));
-		String[] dimensions = input.readLine().split(",")[path.endsWith(PNG) ? 1 : 7].split("x");
-		input.close();
-		double width = Integer.valueOf(dimensions[0].trim());
-		double height = Integer.valueOf(dimensions[1].trim());
-		boolean performResize = Math.min(width, height) < BUTTERAUGLI_MINIMUM_SIZE;
-		if (performResize) {
-			// The image is too small to work with Butteraugli. Resize it.
-			new ProcessBuilder("cp", "-r", path, path + ORIGINAL).start().waitFor();
-			new ProcessBuilder("cp", "-r", webPPath, webPPath + ORIGINAL).start().waitFor();
-			int newHeight = (int) Math.ceil((BUTTERAUGLI_MINIMUM_SIZE / Math.min(width, height)) * Math.max(width, height));
-			new ProcessBuilder("sips", "-Z", String.valueOf(newHeight), path).start().waitFor();
-			new ProcessBuilder("sips", "-Z", String.valueOf(newHeight), webPPath + PNG).start().waitFor();
+		BufferedReader input = null;
+		boolean performResize = false;
+		try {
+			input = new BufferedReader(new InputStreamReader(new ProcessBuilder("file", path).start().getInputStream()));
+			String[] segments = input.readLine().split(",");
+			String[] dimensions = segments[path.endsWith(PNG) ? 1 : segments.length - 2].split("x");
+			double width = Integer.valueOf(dimensions[0].trim());
+			double height = Integer.valueOf(dimensions[1].trim());
+			if (performResize = Math.min(width, height) < BUTTERAUGLI_MINIMUM_SIZE) {
+				// The image is too small to work with Butteraugli. Resize it.
+				new ProcessBuilder("cp", "-r", path, path + ORIGINAL).start().waitFor();
+				new ProcessBuilder("cp", "-r", webPPath, webPPath + ORIGINAL).start().waitFor();
+				int newHeight = (int) Math.ceil((BUTTERAUGLI_MINIMUM_SIZE / Math.min(width, height)) * Math.max(width, height));
+				new ProcessBuilder("sips", "-Z", String.valueOf(newHeight), path).start().waitFor();
+				new ProcessBuilder("sips", "-Z", String.valueOf(newHeight), webPPath + PNG).start().waitFor();
+			}
+		} catch (Exception e) {
+			// Something went wrong while verifying the size. Proceed anyways.
+		} finally {
+			if (input != null) {
+				input.close();
+			}
 		}
 
 		// Read in the dissimilarity result from Butteraugli.
@@ -206,10 +201,6 @@ class Main {
 			new ProcessBuilder("mv", webPPath + ORIGINAL, webPPath).start().waitFor();
 		}
 		return Double.valueOf(line);
-	}
-
-	private static boolean isSmallerFile(final File fileA, final File fileB) {
-		return fileA.length() < fileB.length();
 	}
 
 	private static class ImageFilenameFilter implements FilenameFilter {
