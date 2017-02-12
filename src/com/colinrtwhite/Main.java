@@ -160,47 +160,51 @@ class Main {
 	private static double getImageDissimilarity(final int quality, final String path, final String webPPath,
 			final boolean isLossless) throws IOException, InterruptedException {
 		// Generate a WebP version of the image at the input quality.
-		List<String> arguments = Arrays.asList("cwebp", "-q", String.valueOf(quality), path, "-o", webPPath);
+		String webPPNGPath = webPPath + PNG;
+		List<String> arguments = Arrays.asList("cwebp", "-af", "-mt", "-q", String.valueOf(quality), path, "-o", webPPath);
 		if (isLossless) {
 			(arguments = new ArrayList<>(arguments)).add(1, "-lossless");
 		}
 		new ProcessBuilder(arguments).start().waitFor();
-		new ProcessBuilder("dwebp", webPPath, "-o", webPPath + PNG).start().waitFor();
+		new ProcessBuilder("dwebp", webPPath, "-o", webPPNGPath).start().waitFor();
 
-		// Verify that the image dimensions aren't too small to work with Butteraugli.
-		BufferedReader input = null;
-		boolean performResize = false;
-		try {
-			input = new BufferedReader(new InputStreamReader(new ProcessBuilder("file", path).start().getInputStream()));
+		// Perform some possibly necessary image transformations.
+		boolean performResize = false, isPNG = path.endsWith(PNG);
+		try (BufferedReader input = new BufferedReader(new InputStreamReader(
+				new ProcessBuilder("file", path).start().getInputStream()))) {
+			// Ensure both images have the alpha channel if the source is a PNG.
+			if (isPNG) {
+				new ProcessBuilder("convert", webPPNGPath, "-alpha", "on", webPPNGPath).start().waitFor();
+				new ProcessBuilder("convert", path, "-alpha", "on", path).start().waitFor();
+			}
+
+			// Resize the image if it is too small to work with Butteraugli.
 			String[] segments = input.readLine().split(",");
-			String[] dimensions = segments[path.endsWith(PNG) ? 1 : segments.length - 2].split("x");
+			String[] dimensions = segments[isPNG ? 1 : segments.length - 2].split("x");
 			double width = Integer.valueOf(dimensions[0].trim());
 			double height = Integer.valueOf(dimensions[1].trim());
 			if (performResize = Math.min(width, height) < BUTTERAUGLI_MINIMUM_SIZE) {
-				// The image is too small to work with Butteraugli. Resize it.
 				new ProcessBuilder("cp", "-r", path, path + ORIGINAL).start().waitFor();
 				new ProcessBuilder("cp", "-r", webPPath, webPPath + ORIGINAL).start().waitFor();
 				int newHeight = (int) Math.ceil((BUTTERAUGLI_MINIMUM_SIZE / Math.min(width, height)) * Math.max(width, height));
 				new ProcessBuilder("sips", "-Z", String.valueOf(newHeight), path).start().waitFor();
-				new ProcessBuilder("sips", "-Z", String.valueOf(newHeight), webPPath + PNG).start().waitFor();
+				new ProcessBuilder("sips", "-Z", String.valueOf(newHeight), webPPNGPath).start().waitFor();
 			}
 		} catch (Exception e) {
-			// Something went wrong while verifying the size. Proceed anyways.
-		} finally {
-			if (input != null) {
-				input.close();
-			}
+			// Something went wrong while adding alpha channels or verifying the size. Proceed anyways.
+			e.printStackTrace();
 		}
 
 		// Read in the dissimilarity result from Butteraugli.
-		input = new BufferedReader(new InputStreamReader(new ProcessBuilder("butteraugli", webPPath + PNG, path).start().getInputStream()));
-		String line = input.readLine();
-		input.close();
-		if (performResize) {
-			new ProcessBuilder("mv", path + ORIGINAL, path).start().waitFor();
-			new ProcessBuilder("mv", webPPath + ORIGINAL, webPPath).start().waitFor();
+		try (BufferedReader input = new BufferedReader(new InputStreamReader(
+				new ProcessBuilder("butteraugli", webPPNGPath, path).start().getInputStream()))) {
+			double dissimilarity = Double.valueOf(input.readLine());
+			if (performResize) {
+				new ProcessBuilder("mv", path + ORIGINAL, path).start().waitFor();
+				new ProcessBuilder("mv", webPPath + ORIGINAL, webPPath).start().waitFor();
+			}
+			return dissimilarity;
 		}
-		return Double.valueOf(line);
 	}
 
 	private static class ImageFilenameFilter implements FilenameFilter {

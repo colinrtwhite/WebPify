@@ -16,9 +16,9 @@ Original JPG | WebP (-q 1.0) | WebP (-q 2.0)
 WebP files are supported by the Google Chrome and Opera web browsers.
 
 ## Set Up
-Install the libjpeg, libpng, and the WebP format through [Homebrew](http://brew.sh). Run the following commands in a Terminal window:
+Install imagemagick, libjpeg, libpng, and the WebP format through [Homebrew](http://brew.sh). Run the following commands in a Terminal window:
 
-    brew install libjpeg libpng webp
+    brew install imagemagick libjpeg libpng webp
 
 Download [this shell script](set_up_butteraugli.sh) and run it like so:
 
